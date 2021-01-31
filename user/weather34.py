@@ -34,11 +34,8 @@ import math
 import os
 import re
 import sys
-import json
 import time
 import weeutil.rsyncupload
-try: import xmltodict
-except: pass
 from distutils.version import StrictVersion
 try:
     import urllib2 as urllib
@@ -461,8 +458,6 @@ class ForecastData():
             while services:
                 service = services.pop(0)
                 url = self.settings_dict.get(service + "_url")
-                try: service_xml = self.settings_dict.get(service + "_xml_data", False)
-                except: service_xml = False
                 header = self.settings_dict.get(service + "_header", "User-Agent:Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_6_4; en-US) AppleWebKit/534.3 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/534.3").split(":")
                 header = {header[0]:":".join(header[1:])}
                 try:
@@ -477,16 +472,10 @@ class ForecastData():
                         os.mkdir(os.path.dirname(lfilename), 0o777)
                     loginf("Web Service: %s is running" % (service,))
                     try:
-                        response = urllib.urlopen(urllib.Request(url, None, header), timeout = 15).read().decode('utf-8')
-                        if service_xml:
-                            try:
-                                response = json.dumps(xmltodict.parse(response))
-                            except Exception as err:
-                                response = ""
-                                logerr("Web service " + service + " Failed XML2Json parsing with error: " + err)
+                        response = urllib.urlopen(urllib.Request(url, None, header), timeout = 15)
                         try:
                             with open(lfilename, 'w+') as file_handle:
-                                file_handle.write(str(response))
+                                file_handle.write(str(response.read().decode('utf-8')))
                         except Exception as err:
                             logerr("Error writing web service file: %s, Error: %s" % (lfilename, err))
                             continue
@@ -539,9 +528,9 @@ class CloudCover():
             logdbg("CloudCover File 1 " + file1)
             logdbg("CloudCover File 2 " + file2)
             while True:
-                logdbg("CloudCover url1 exit code " + str(subprocess.call("wget -r -O " + "'" + file1 + "'" + " '" + url1 + "'", shell = True)))
+                logdbg("CloudCover url1 exit code " + str(os.system("wget -r -O " + "'" + file1 + "'" + " '" + url1 + "'")))
                 os.chmod(file1, 0o666)
-                logdbg("CloudCover url2 exit code " + str(subprocess.call("wget -r -O " + "'" + file2 + "'" + " '" + url2 + "'", shell = True)))
+                logdbg("CloudCover url2 exit code " + str(os.system("wget -r -O " + "'" + file2 + "'" + " '" + url2 + "'")))
                 os.chmod(file2, 0o666)
                 if os.stat(file1).st_size > 5000 and os.stat(file2).st_size > 5000:
                     alt = weewx.almanac.Almanac(time.time(), float(lat), float(lon)).sun.alt
@@ -565,7 +554,6 @@ class CloudCover():
                         min = 100
                         max = 250
                     pix = im.convert('L').load()
-                    im.close()
                     f.close()
                     for y in range(ypos1,ypos2):
                         for x in range(xpos1,xpos2):
@@ -576,8 +564,7 @@ class CloudCover():
                         self.cloud_cover_percent = 1
                     if self.cloud_cover_percent > 99:
                         self.cloud_cover_percent = 99
-                    im = None
-                    pixarray = None
+                    pix = None 
                 time.sleep(time_interval)
         except Exception as e:
             logdbg("CloudCover:calculate_cloud_cover " + str(e))
@@ -794,6 +781,12 @@ class Weather34RealTime(StdService):
                 self.cache_enable = True if config_dict['Weather34RealTime'].get('cache_enable') == 'True' else False; 
             if 'cache_stale_time' in config_dict['Weather34RealTime']:
                 self.cache_stale_time = int(config_dict['Weather34RealTime'].get('cache_stale_time')) 
+            if 'cache_directory' in config_dict['Weather34RealTime']:
+                path = config_dict['Weather34RealTime'].get('cache_directory') 
+                if os.path.isdir(path):
+                    self.cache_file = os.path.join(path, 'Weather34RealTimeRetainedLoopValues.txt')
+                else:
+                    logerr('Invalid cache_directory using default location tmp/weather34')	
             if 'exclude_fields' in config_dict['Weather34RealTime']:
                 self.excludeFields = set(weeutil.weeutil.option_as_list(config_dict['Weather34RealTime'].get('exclude_fields', [])))
                 logdbg("excluding fields: %s" % (self.excludeFields,))
